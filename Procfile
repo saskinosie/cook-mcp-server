@@ -1,1 +1,1 @@
-web: python mcp_server_authenticated.py
+web: python mcp_server_sse.py

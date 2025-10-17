@@ -4,6 +4,7 @@ uvicorn==0.37.0
 python-dotenv==1.1.1
 httpx==0.28.1
 pydantic==2.11.10
+mcp==1.16.0
 
 # Weaviate and OpenAI
 weaviate-client==4.17.0
@@ -23,6 +24,8 @@ h11==0.16.0
 typing_extensions==4.15.0
 annotated-types==0.7.0
 pydantic_core==2.33.2
+httpx-sse==0.4.1
+sse-starlette==3.0.2
 
 # Required by weaviate
 grpcio==1.75.1
