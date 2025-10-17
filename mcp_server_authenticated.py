@@ -10,8 +10,7 @@ from dotenv import load_dotenv
 import httpx
 from typing import Optional
 
-# Import MCP components
-from mcp.types import Tool, TextContent, ImageContent
+# Import components
 import weaviate
 from weaviate.classes.query import Filter
 from openai import OpenAI
