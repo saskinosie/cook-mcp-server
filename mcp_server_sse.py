@@ -149,4 +149,4 @@ def get_page_direct(page_number: int) -> str:
 
 if __name__ == "__main__":
     # Run with SSE transport on port 8080
-    mcp.run(transport="sse", port=int(os.getenv("PORT", 8080)))
+    mcp.run(transport="sse", host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
