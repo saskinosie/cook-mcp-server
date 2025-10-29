@@ -1,9 +1,12 @@
 # Core dependencies for production
 fastapi==0.115.0
-uvicorn==0.37.0
+uvicorn[standard]==0.37.0
 python-dotenv==1.1.1
 httpx==0.28.1
 pydantic==2.11.10
+
+# MCP SDK with OAuth support
+mcp>=1.19.0
 fastmcp>=2.0
 
 # Weaviate and OpenAI
