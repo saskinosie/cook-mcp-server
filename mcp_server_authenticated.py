@@ -15,19 +15,40 @@ import weaviate
 from weaviate.classes.query import Filter
 from openai import OpenAI
 
-load_dotenv('.env.local')
+import sys
+from pathlib import Path
 
-# Initialize Weaviate and OpenAI
-weaviate_client = weaviate.connect_to_weaviate_cloud(
-    cluster_url=os.getenv("WEAVIATE_URL"),
-    auth_credentials=weaviate.auth.Auth.api_key(os.getenv("WEAVIATE_API_KEY")),
-    headers={
-        "X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY"),
-        "X-Cohere-Api-Key": os.getenv("COHERE_KEY")
-    }
-)
+# Load environment variables - try multiple paths
+env_paths = ['.env.local', '.env', Path(__file__).parent / '.env']
+for env_path in env_paths:
+    if load_dotenv(env_path):
+        print(f"Loaded env from: {env_path}", file=sys.stderr)
+        break
 
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Lazy initialization - clients created on first use
+_weaviate_client = None
+_openai_client = None
+
+def get_weaviate_client():
+    """Get or create Weaviate client."""
+    global _weaviate_client
+    if _weaviate_client is None:
+        _weaviate_client = weaviate.connect_to_weaviate_cloud(
+            cluster_url=os.getenv("WEAVIATE_URL"),
+            auth_credentials=weaviate.auth.Auth.api_key(os.getenv("WEAVIATE_API_KEY")),
+            headers={
+                "X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY"),
+                "X-Cohere-Api-Key": os.getenv("COHERE_KEY")
+            }
+        )
+    return _weaviate_client
+
+def get_openai_client():
+    """Get or create OpenAI client."""
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
 
 # FastAPI app
 app = FastAPI(title="Cook Engineering Manual MCP")
@@ -86,11 +107,13 @@ async def root():
 async def health_check():
     """Health check for Railway"""
     try:
-        weaviate_client.is_ready()
+        wc = get_weaviate_client()
+        oc = get_openai_client()
+        wc.is_ready()
         return {
             "status": "healthy",
             "weaviate": "connected",
-            "openai": "configured" if openai_client.api_key else "missing"
+            "openai": "configured" if oc.api_key else "missing"
         }
     except Exception as e:
         return JSONResponse(
@@ -142,6 +165,7 @@ async def search_tool(request: Request, authorization: Optional[str] = Header(No
         raise HTTPException(status_code=400, detail="Missing 'query' parameter")
 
     # Search Weaviate
+    weaviate_client = get_weaviate_client()
     collection = weaviate_client.collections.get("Cook_Engineering_Manual")
     search_results = collection.query.near_text(
         query=question,
@@ -200,6 +224,7 @@ Please provide a comprehensive answer. If images are provided, carefully examine
 
     # Call GPT-4V
     try:
+        openai_client = get_openai_client()
         response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -230,6 +255,7 @@ async def get_page_tool(request: Request, authorization: Optional[str] = Header(
     if not page_number:
         raise HTTPException(status_code=400, detail="Missing 'page_number' parameter")
 
+    weaviate_client = get_weaviate_client()
     collection = weaviate_client.collections.get("Cook_Engineering_Manual")
     response = collection.query.fetch_objects(
         filters=Filter.by_property("page").equal(page_number),
