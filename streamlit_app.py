@@ -7,7 +7,7 @@ import requests
 import json
 
 # Configuration
-API_URL = "https://cook-mcp-server-production.up.railway.app"
+API_URL = "https://lavish-flexibility-production-3b1d.up.railway.app"
 
 st.set_page_config(
     page_title="Cook Engineering Manual Search",
