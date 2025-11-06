@@ -4,24 +4,44 @@ Implements the Model Context Protocol over HTTP with Server-Sent Events
 """
 from mcp.server.fastmcp import FastMCP
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 import weaviate
 from weaviate.classes.query import Filter
 from openai import OpenAI
 
-load_dotenv('.env.local')
+# Load environment variables - try multiple paths for Railway deployment
+env_paths = ['.env.local', '.env', Path(__file__).parent / '.env']
+for env_path in env_paths:
+    if load_dotenv(env_path):
+        print(f"Loaded env from: {env_path}", file=sys.stderr)
+        break
 
-# Initialize Weaviate and OpenAI
-weaviate_client = weaviate.connect_to_weaviate_cloud(
-    cluster_url=os.getenv("WEAVIATE_URL"),
-    auth_credentials=weaviate.auth.Auth.api_key(os.getenv("WEAVIATE_API_KEY")),
-    headers={
-        "X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY"),
-        "X-Cohere-Api-Key": os.getenv("COHERE_KEY")
-    }
-)
+# Lazy initialization - clients created on first use
+_weaviate_client = None
+_openai_client = None
 
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+def get_weaviate_client():
+    """Get or create Weaviate client."""
+    global _weaviate_client
+    if _weaviate_client is None:
+        _weaviate_client = weaviate.connect_to_weaviate_cloud(
+            cluster_url=os.getenv("WEAVIATE_URL"),
+            auth_credentials=weaviate.auth.Auth.api_key(os.getenv("WEAVIATE_API_KEY")),
+            headers={
+                "X-OpenAI-Api-Key": os.getenv("OPENAI_API_KEY"),
+                "X-Cohere-Api-Key": os.getenv("COHERE_KEY")
+            }
+        )
+    return _weaviate_client
+
+def get_openai_client():
+    """Get or create OpenAI client."""
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
 
 # Create FastMCP server
 mcp = FastMCP("Cook Engineering Manual")
@@ -40,6 +60,7 @@ def search_engineering_manual(query: str) -> str:
         A comprehensive answer with relevant information from the manual
     """
     # Search Weaviate
+    weaviate_client = get_weaviate_client()
     collection = weaviate_client.collections.get("Cook_Engineering_Manual")
     search_results = collection.query.near_text(
         query=query,
@@ -98,6 +119,7 @@ Please provide a comprehensive answer. If images are provided, carefully examine
 
     # Call GPT-4V
     try:
+        openai_client = get_openai_client()
         response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -130,6 +152,7 @@ def get_page_direct(page_number: int) -> str:
     Returns:
         The content from the specified page
     """
+    weaviate_client = get_weaviate_client()
     collection = weaviate_client.collections.get("Cook_Engineering_Manual")
     response = collection.query.fetch_objects(
         filters=Filter.by_property("page").equal(page_number),
@@ -148,11 +171,24 @@ def get_page_direct(page_number: int) -> str:
     return f"Content from Page {page_number}:\n\n" + "\n\n---\n\n".join(page_content)
 
 if __name__ == "__main__":
-    # Run with SSE transport on port 8080
+    # Run with SSE transport
     import uvicorn
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
 
-    # Get the HTTP app from FastMCP (includes SSE support)
-    app = mcp.http_app()
+    # Create FastAPI app
+    app = FastAPI(title="Cook Engineering Manual MCP Server")
+
+    # Health check endpoint
+    @app.get("/")
+    @app.get("/health")
+    async def health():
+        return JSONResponse({"status": "healthy", "service": "Cook Engineering Manual MCP"})
+
+    # Mount MCP SSE endpoint
+    app.mount("/mcp", mcp.get_asgi_app())
 
     # Run with uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    port = int(os.getenv("PORT", 8080))
+    print(f"Starting server on port {port}", file=sys.stderr)
+    uvicorn.run(app, host="0.0.0.0", port=port)
