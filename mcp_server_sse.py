@@ -173,7 +173,7 @@ def get_page_direct(page_number: int) -> str:
 if __name__ == "__main__":
     # Run with SSE transport
     import uvicorn
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse
 
     # Create FastAPI app
@@ -183,7 +183,41 @@ if __name__ == "__main__":
     @app.get("/")
     @app.get("/health")
     async def health():
-        return JSONResponse({"status": "healthy", "service": "Cook Engineering Manual MCP"})
+        try:
+            # Test connections
+            wc = get_weaviate_client()
+            oc = get_openai_client()
+            return JSONResponse({
+                "status": "healthy",
+                "weaviate": "connected",
+                "openai": "configured"
+            })
+        except Exception as e:
+            return JSONResponse({
+                "status": "unhealthy",
+                "error": str(e)
+            }, status_code=503)
+
+    # REST API endpoints for Streamlit
+    @app.post("/tools/search_engineering_manual")
+    async def api_search(request: Request):
+        try:
+            data = await request.json()
+            query = data.get("query", "")
+            result = search_engineering_manual(query)
+            return JSONResponse({"result": result})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.post("/tools/get_page_direct")
+    async def api_get_page(request: Request):
+        try:
+            data = await request.json()
+            page_number = data.get("page_number", 1)
+            result = get_page_direct(page_number)
+            return JSONResponse({"result": result})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
     # Mount MCP SSE endpoint
     app.mount("/mcp", mcp.get_asgi_app())
