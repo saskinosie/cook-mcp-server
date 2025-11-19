@@ -220,7 +220,7 @@ if __name__ == "__main__":
             return JSONResponse({"error": str(e)}, status_code=500)
 
     # Mount MCP SSE endpoint
-    app.mount("/mcp", mcp.get_asgi_app())
+    app.mount("/mcp", mcp.sse_app())
 
     # Run with uvicorn
     port = int(os.getenv("PORT", 8080))
